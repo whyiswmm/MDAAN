@@ -7,19 +7,21 @@ import utils.model as Model
 import torch.optim as optim
 import torch.nn as nn
 import math
-import connectome_conv_net_xrt.construct_brain as cb
+# import connectome_conv_net_xrt.construct_brain as cb
 import numpy as np
 from torch.autograd import Variable
 from alipy import ToolBox
 from collections import Counter
 from sklearn.metrics import roc_auc_score
-
+# from utils.model import MDAAN
+import warnings
+warnings.filterwarnings("ignore")
 DEVICE = torch.device('cuda:{}'.format(0)) if torch.cuda.is_available() else torch.device('cpu')
 
 seed = 5
-torch.manual_seed(seed)  # 为CPU设置随机种子
-torch.cuda.manual_seed(seed)  # 为当前GPU设置随机种子
-np.random.seed(seed)  # Numpy module.
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+np.random.seed(seed)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
@@ -50,6 +52,7 @@ def test_single(model, data, label):
     model.eval()
     with torch.no_grad():
         _, class_out, _, domain_pred = model(data)
+        # class_out = torch.sigmoid(class_out)
 
     num = len(label)
 
@@ -58,7 +61,6 @@ def test_single(model, data, label):
             true_num += 1
         else:
             false_num += 1
-
     return true_num
 
 def test_mul(model, data, label):
@@ -66,6 +68,7 @@ def test_mul(model, data, label):
     model.eval()
     with torch.no_grad():
         _, class_out, _, domain_pred = model(data, source=False)
+        # class_out = torch.sigmoid(class_out)
         inf_entro_do = al_entro(domain_pred, len(label))
 
     num = len(label)
@@ -115,6 +118,7 @@ def load_schi(source, target):
         nums.append(n)
         total += n
     para = [n/total for n in nums]
+
     nets_target = np.load('data/{}_cov.npy'.format(target))
     labels_target = np.load('data/{}_labels.npy'.format(target))
 
@@ -153,7 +157,6 @@ def load_aal(source, target):
     return nets_source, labels_source, nets_target, labels_target
 
 def train(source, target):
-
     nets_source, labels_source, nets_target, labels_target, para = load_schi(source, target)
     num = len(labels_target)
 
@@ -195,7 +198,7 @@ def train(source, target):
         """train"""
         num_epochs = 350
         flag = 0
-        lr = 0.003
+        lr = 0.002
         lambd = 0.5
         al_method = 'ac'    # ac or random
         max_acc, max_sen, max_spe, max_auc, max_bac, max_pev, max_npv = 0,0,0,0,0,0,0
@@ -231,12 +234,10 @@ def train(source, target):
             loss.backward()
             optimizer.step()
 
-
             if flag > 3.6:
                 active_learning(select=select, source=fea_s, target=fea_t,
                                 labels=torch.cat((source_label[0], source_label[1], source_label[2], source_label[3], target_label), 0))
                 acc, sen, spe, auc, bac, ppv, npv, test_choose = test_mul(model=model, data=target_data, label=labels_target)
-
                 if acc > max_acc:
                     max_acc, max_sen, max_spe, max_auc, max_bac, max_pev, max_npv = acc, sen, spe, auc, bac, ppv, npv
             else:
@@ -249,15 +250,12 @@ def train(source, target):
             if epoch % 500 == 0:
                 print(epoch)
 
-
         if al_method == 'ac':
             counts = Counter(select).most_common(1)
             choose_index = [counts[0][0] - len(fea_s)]
         elif al_method == 'random':
             choose_index = [19]
         print(choose_index)
-        # choose_index.sort()
-        # choose_index.reverse()
         print('shot:{}   & {:.2f} & {:.2f} & {:.2f} & {:.2f} & {:.2f} & {:.2f} & {:.2f} \\\\'.format(shot,
                                                                                                    max_acc*100,
                                                                                                    max_sen*100,
@@ -271,8 +269,6 @@ def train_schizophrenia():
     datasets = ['data_huang45', 'COBRE_120_L1', 'Nottingham_68_L1', 'Taiwan_131_L1', 'Xiangya_143_L1']
     for i in range(5):
         train(source=datasets[0:i] + datasets[i+1:5], target=datasets[i])
-
-
 
 def train_aal():
     # 0:Leuven  1:NYU   2:UCLA  3:UM    4:USM
